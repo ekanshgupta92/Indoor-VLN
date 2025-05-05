@@ -483,11 +483,30 @@ class NavigationVLM:
             return "Could not process the image."
         scene_graph = self.generate_scene_graph(image_data)
         self.visualize_scene_graph(image_path, scene_graph)
-        input_text = f"Question: {question}\nScene Graph: {json.dumps(scene_graph, indent=2)}\nAnswer:"
+        
+        if "objects do you see" in question.lower():
+            scene_info = f"Objects: {', '.join(node['label'] for node in scene_graph['nodes'])}"
+        elif "spatial relationship" in question.lower():
+            scene_info = f"Relationships: {'; '.join(f'{edge['source']} is {edge['relation']} {edge['target']}' for edge in scene_graph['edges'][:3]) or 'None'}"
+        else:
+            scene_info = f"Scene contains {len(scene_graph['nodes'])} objects."
+        
+        input_text = f"Question: {question}\n{scene_info}\nAnswer:"
         inputs = self.t5_tokenizer(input_text, return_tensors="pt", max_length=512, truncation=True).to(self.device)
         with torch.no_grad():
-            outputs = self.t5_model.generate(input_ids=inputs.input_ids, attention_mask=inputs.attention_mask, max_length=100, num_beams=4, early_stopping=True)
-        return self.t5_tokenizer.decode(outputs[0], skip_special_tokens=True).split("Answer:")[-1].strip()
+            outputs = self.t5_model.generate(
+                input_ids=inputs.input_ids, 
+                attention_mask=inputs.attention_mask, 
+                max_length=150,
+                num_beams=6,
+                early_stopping=True
+            )
+        answer = self.t5_tokenizer.decode(outputs[0], skip_special_tokens=True).split("Answer:")[-1].strip()
+        
+        if "not_duplicate" in answer.lower() or "not_entailment" in answer.lower() or "nodes" in answer.lower():
+            answer = "Unknown response"
+        
+        return answer
 
 def main():
     random.seed(42)
