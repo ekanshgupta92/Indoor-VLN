@@ -1,0 +1,84 @@
+Image 1/10: ai2thor_ai2thor_8_49_71.png
+Question: What objects do you see in this image?
+Answer: not_duplicate
+
+Image 2/10: ai2thor_ai2thor_6_68_70.png
+Question: Is there a table in the scene?
+Answer: False
+
+Image 3/10: ai2thor_ai2thor_8_0_12.png
+Question: What objects do you see in this image?
+Answer: not_duplicate
+
+Image 4/10: ai2thor_ai2thor_5_17_35.png
+Question: What objects do you see in this image?
+Answer: not_duplicate
+
+Image 5/10: ai2thor_ai2thor_1_28_42.png
+Question: What objects do you see in this image?
+Answer: not_duplicate
+
+Image 6/10: ai2thor_ai2thor_4_49_66.png
+Question: What objects do you see in this image?
+Answer: not_duplicate
+
+Image 7/10: ai2thor_ai2thor_0_12_55.png
+Question: Is there a table in the scene?
+Answer: False
+
+Image 8/10: ai2thor_ai2thor_0_31_64.png
+Question: How many furniture items can you identify?
+Answer: not_entailment
+
+Image 9/10: ai2thor_ai2thor_2_7_41.png
+Question: How many furniture items can you identify?
+Answer: not_duplicate
+
+Image 10/10: ai2thor_ai2thor_5_4_55.png
+Question: What objects do you see in this image?
+Answer: not_duplicate
+
+Processing textvqa images:
+No textvqa images found.
+
+Processing coco images:
+
+Image 1/10: coco_000000479008.jpg_13_14.png
+Question: Are there any people in this image?
+Answer: not_duplicate
+
+Image 2/10: coco_000000468541.jpg_1_4.png
+Question: What objects do you see in this image?
+Answer: "nodes": [  "id": 0, "label": "floor", "position": [ 232.5, 335.0 ], "depth": 1.4834630489349365, "size": [ 401, 400 ],  "id": 5, "label": "chair", "position": [ 178.0, 402.5 ],  "i
+
+Image 3/10: coco_000000451468.jpg_5_19.png
+Question: Describe the spatial relationship between objects.
+Answer: ,  "id": 0, "label": "floor", "position": [ 572.0, 396.5 ],  "id": 5, "label": "wall", "position": [ 498.5, 151.5 ],  "id": 8, "label": "wall", "position": [ 498.5, 151.5 ],
+
+Image 4/10: coco_000000073861.jpg_3_16.png
+Question: Describe the spatial relationship between objects.
+Answer: ,  "id": 0, "label": "floor", "position": [ 10.0, 405.0 ],  "id": 2, "label": "floor", "position": [ 566.0, 29.5 ],  "id": 6, "label": "wall", "position": [ 572.0, 29.5 ],
+
+Image 5/10: coco_000000040986.jpg_2_10.png
+Question: Describe the spatial relationship between objects.
+Answer: 
+
+Image 6/10: coco_000000010643.jpg_3_4.png
+Question: What objects do you see in this image?
+Answer: "nodes": [  "id": 0, "label": "table", "position": [ 56.5, 298.5 ],  "id": 4, "label": "floor", "position": [ 322.0, 288.0 ],  "id": 8, "label": "chair", "position": [ 368.0, 165.0 ]
+
+Image 7/10: coco_000000122953.jpg_3_4.png
+Question: What objects do you see in this image?
+Answer: "nodes": [  "id": 0, "label": "floor", "position": [ 486.0, 190.0 ], "depth": 2.4039900302886963, "size": [ 60, 35 ],  "id": 4, "label": "wall", "position": [ 457.5, 265.5 ],  "id
+
+Image 8/10: coco_000000165547.jpg_1_6.png
+Question: Are there any people in this image?
+Answer: ,  "id": 1, "label": "table", "position": [ 452.0, 322.0 ], "depth": 2.527158260345459, "size": [ 96, 92 ],  "id": 5, "label": "chair", "position": [ 494.0, 313.5 ],  "id": 8, "l
+
+Image 9/10: coco_000000216320.jpg_0_2.png
+Question: Are there any people in this image?
+Answer: ,  "id": 1, "label": "floor", "position": [ 341.0, 375.5 ],  "id": 4, "label": "wall", "position": [ 39.5, 18.5 ],  "id": 7, "label": "refrigerator", "position": [ 45.0, 386.5 ]
+
+Image 10/10: coco_000000438723.jpg_3_5.png
+Question: Are there any people in this image?
+Answer: ,  "id": 1, "label": "floor", "position": [ 46.5, 278.0 ], "depth": 1.624993920326233, "size": [ 93, 79 ],  "id": 5, "label": "chair", "position": [ 114.5, 585.5 ], "depth": 1.2406196594238

@@ -16,11 +16,52 @@ import random
 from tqdm import tqdm
 import gc
 import warnings
+import pandas as pd
+from sklearn.metrics import f1_score, accuracy_score
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", message="torch.utils.checkpoint: the use_reentrant parameter")
+
+class MetricsCallback(TrainerCallback):
+    def __init__(self, tokenizer, output_dir):
+        super().__init__()
+        self.tokenizer = tokenizer
+        self.metrics_file = os.path.join(output_dir, "training_metrics.csv")
+        self.metrics = {'epoch': [], 'step': [], 'loss': [], 'f1': [], 'accuracy': []}
+        
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs:
+            step = state.global_step
+            epoch = state.epoch
+            loss = logs.get('loss', None)
+            
+            if loss is not None:
+                self.metrics['epoch'].append(epoch)
+                self.metrics['step'].append(step)
+                self.metrics['loss'].append(loss)
+                # Placeholder values for metrics that need evaluation
+                self.metrics['f1'].append(0)
+                self.metrics['accuracy'].append(0)
+                
+                # Save metrics to CSV after each log
+                pd.DataFrame(self.metrics).to_csv(self.metrics_file, index=False)
+    
+    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+        if metrics:
+            step = state.global_step
+            epoch = state.epoch
+            f1 = metrics.get('eval_f1', 0)
+            accuracy = metrics.get('eval_accuracy', 0)
+            
+            # Update the last entry with actual evaluation metrics
+            if len(self.metrics['epoch']) > 0:
+                self.metrics['f1'][-1] = f1
+                self.metrics['accuracy'][-1] = accuracy
+                
+                # Save updated metrics to CSV
+                pd.DataFrame(self.metrics).to_csv(self.metrics_file, index=False)
 
 class CustomProgressCallback(TrainerCallback):
     def __init__(self):
@@ -53,6 +94,37 @@ class CustomProgressCallback(TrainerCallback):
     def on_train_end(self, args, state, control, **kwargs):
         self.progress_bar.close()
         self.epoch_progress.close()
+
+def compute_metrics(eval_pred):
+    predictions, labels = eval_pred
+    predictions = np.argmax(predictions, axis=2)
+    
+    # Remove padding tokens
+    true_predictions = [
+        [p for (p, l) in zip(prediction, label) if l != -100]
+        for prediction, label in zip(predictions, labels)
+    ]
+    true_labels = [
+        [l for l in label if l != -100]
+        for label in labels
+    ]
+    
+    # Calculate metrics
+    accuracy = accuracy_score(
+        [" ".join(map(str, l)) for l in true_labels],
+        [" ".join(map(str, p)) for p in true_predictions]
+    )
+    
+    f1 = f1_score(
+        [item for sublist in true_labels for item in sublist],
+        [item for sublist in true_predictions for item in sublist],
+        average='macro'
+    )
+    
+    return {
+        'accuracy': accuracy,
+        'f1': f1,
+    }
 
 class NavigationDataset(Dataset):
     def __init__(self, config):
@@ -444,21 +516,46 @@ class NavigationVLM:
         import glob
         batch_files = sorted(glob.glob(os.path.join(batch_dir, f"{prefix}*.pt")))
         all_data = []
-        for batch_file in tqdm(batch_files, desc="Loading preprocessed batches"):
-            batch_data = torch.load(batch_file)
-            all_data.extend(batch_data)
+        
+        # Process in smaller chunks to avoid OOM
+        chunk_size = 2  # Process just 2 batch files at a time
+        for i in range(0, len(batch_files), chunk_size):
+            chunk_files = batch_files[i:i+chunk_size]
+            chunk_data = []
+            
+            for batch_file in tqdm(chunk_files, desc=f"Loading chunk {i//chunk_size + 1}/{(len(batch_files)+chunk_size-1)//chunk_size}"):
+                batch_data = torch.load(batch_file)
+                chunk_data.extend(batch_data)
+                
+            all_data.extend(chunk_data)
+            # Explicitly clear memory after processing each chunk
+            chunk_data = None
+            torch.cuda.empty_cache()
+            gc.collect()
+            
         return all_data
 
     def train(self, output_dir: str):
         os.makedirs(output_dir, exist_ok=True)
         batch_files = [f for f in os.listdir(".") if f.startswith("processed_batch_") and f.endswith(".pt")]
+        
         if batch_files:
             print("Found preprocessed batches. Loading from disk...")
             train_dataset = self.load_preprocessed_batches()
         else:
             print("No preprocessed batches found. Preprocessing now...")
             train_dataset = self.preprocess_dataset()
+        
         self.clear_memory()
+        
+        # Split dataset into train and eval
+        train_size = int(0.9 * len(train_dataset))
+        eval_size = len(train_dataset) - train_size
+        train_data, eval_data = torch.utils.data.random_split(train_dataset, [train_size, eval_size])
+        
+        train_dataset = None
+        self.clear_memory()
+        
         class PreprocessedDataset(torch.utils.data.Dataset):
             def __init__(self, data):
                 self.data = data
@@ -466,11 +563,16 @@ class NavigationVLM:
                 return len(self.data)
             def __getitem__(self, idx):
                 return self.data[idx]
-        torch_dataset = PreprocessedDataset(train_dataset)
+        
+        torch_train_dataset = PreprocessedDataset(train_data)
+        torch_eval_dataset = PreprocessedDataset(eval_data)
+
+        
         training_args = TrainingArguments(
             output_dir=output_dir,
             num_train_epochs=self.config['epochs'],
             per_device_train_batch_size=self.config['batch_size'],
+            per_device_eval_batch_size=self.config['batch_size'],
             save_steps=self.config.get('save_steps', 500),
             save_total_limit=3,
             logging_dir=os.path.join(output_dir, "logs"),
@@ -486,8 +588,11 @@ class NavigationVLM:
             optim="adamw_torch",
             remove_unused_columns=False,
             save_strategy="epoch",
-            save_safetensors=False
+            save_safetensors=False,
+            evaluation_strategy="epoch",
+            dataloader_drop_last=True,
         )
+        
         class CrossAttentionVLM(torch.nn.Module):
             def __init__(self, vit_model, t5_model):
                 super().__init__()
@@ -523,18 +628,54 @@ class NavigationVLM:
                 else:
                     outputs = self.t5.generate(encoder_outputs=(combined,), attention_mask=attention_mask, max_length=64)
                     return outputs
+        
         model = CrossAttentionVLM(self.vit_model, self.t5_model).to(self.device)
+        
         trainer = Trainer(
             model=model,
             args=training_args,
-            train_dataset=torch_dataset,
-            callbacks=[CustomProgressCallback()]
+            train_dataset=torch_train_dataset,
+            eval_dataset=torch_eval_dataset,
+            compute_metrics=compute_metrics,
+            callbacks=[
+                CustomProgressCallback(),
+                MetricsCallback(self.t5_tokenizer, output_dir)
+            ]
         )
+        
         trainer.state.trainer = trainer
         trainer.train()
+        
+        # Save models
         self.t5_model.save_pretrained(os.path.join(output_dir, "t5_model"), safe_serialization=False)
         self.t5_tokenizer.save_pretrained(os.path.join(output_dir, "t5_tokenizer"))
         torch.save(self.vit_model.state_dict(), os.path.join(output_dir, "vit_model.pt"))
+        
+        # Plot and save metrics
+        metrics_df = pd.read_csv(os.path.join(output_dir, "training_metrics.csv"))
+        try:
+            import matplotlib.pyplot as plt
+            plt.figure(figsize=(12, 8))
+            
+            plt.subplot(2, 1, 1)
+            plt.plot(metrics_df['step'], metrics_df['loss'], label='Training Loss')
+            plt.xlabel('Steps')
+            plt.ylabel('Loss')
+            plt.title('Training Loss')
+            plt.legend()
+            
+            plt.subplot(2, 1, 2)
+            plt.plot(metrics_df['step'], metrics_df['accuracy'], label='Accuracy')
+            plt.plot(metrics_df['step'], metrics_df['f1'], label='F1 Score')
+            plt.xlabel('Steps')
+            plt.ylabel('Score')
+            plt.title('Evaluation Metrics')
+            plt.legend()
+            
+            plt.tight_layout()
+            plt.savefig(os.path.join(output_dir, "training_metrics.png"))
+        except:
+            print("Could not generate metrics plot")
 
     def query(self, image_path, question):
         try:
@@ -570,7 +711,7 @@ max_scenes: 30
 max_textvqa: 300
 max_coco: 300
 epochs: 3
-batch_size: 16
+batch_size: 4
 gradient_accumulation_steps: 2
 learning_rate: 2e-5
 save_steps: 200
