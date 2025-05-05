@@ -1,134 +1,136 @@
-# Indoor Navigation Vision-Language Model (VLM)
+Indoor Navigation Vision-Language Model (VLM)
+The Indoor Navigation Vision-Language Model (VLM) is a sophisticated multimodal deep learning framework designed for visual question answering and scene graph reasoning in indoor environments. Built upon state-of-the-art vision and language models, it integrates synthetic scenes from AI2-THOR, real-world datasets such as COCO and TextVQA, and advanced object detection pipelines to deliver robust and accurate scene understanding.
 
-The Indoor Navigation VLM is a multimodal deep learning pipeline designed for **visual question answering** and **scene graph reasoning** in indoor environments. It leverages synthetic scenes from **AI2-THOR**, alongside real-world datasets like **COCO** and **TextVQA**, to deliver robust scene understanding through state-of-the-art vision and language models, enhanced with reliable object detection and fallback mechanisms.
+Key Features
 
----
+Multimodal Reasoning: Seamlessly integrates image and text inputs to enable comprehensive visual and contextual reasoning.
+Scene Graph Generation: Constructs detailed graphs capturing objects and their spatial relationships (e.g., left_of, right_of, near).
+Robust Object Detection:
+Primary: Utilizes AI2-THOR metadata for precise object detection in synthetic scenes.
+Secondary: Employs SAM2 segmentation for real-world images.
+Fallback: Implements color-based segmentation to ensure reliability when SAM2 detection fails.
 
-## 🚀 Features
-- **Multimodal Reasoning**: Combines image and text (question) inputs for comprehensive visual reasoning.
-- **Scene Graph Generation**: Constructs graphs of detected objects and their spatial relationships (e.g., left_of, right_of, near).
-- **Flexible Object Detection**:
-  - Primary: Uses AI2-THOR metadata for synthetic images.
-  - Secondary: SAM2 segmentation for real-world images.
-  - Fallback: Color-based segmentation when SAM2 fails.
-- **Multiple Dataset Support**: Integrates AI2-THOR, COCO, and TextVQA for diverse training data.
-- **Efficient Preprocessing**: Batch-wise caching and disk persistence to manage memory constraints.
-- **Progress Monitoring**: Displays `tqdm` progress bars for preprocessing and training.
 
----
+Dataset Versatility: Supports AI2-THOR, COCO, and TextVQA datasets for diverse training scenarios.
+Memory Optimization: Employs batch-wise preprocessing with disk persistence to handle large datasets efficiently.
+Progress Tracking: Provides real-time feedback during preprocessing and training using tqdm progress bars.
 
-## 📊 Datasets
-- **AI2-THOR**: Synthetic indoor scenes with ground-truth metadata (object positions, types, etc.), ideal for scene graph generation and navigation questions.
-- **COCO**: Real-world images with object annotations, focusing on indoor categories (e.g., chair, table, bed, couch).
-- **TextVQA**: Real-world images paired with text-based questions and answers to enhance visual question answering.
 
----
+Datasets
+The model leverages the following datasets to ensure robust performance across synthetic and real-world environments:
 
-## 🏗️ Model Architecture
-### Vision Backbone
-- **ViT (Vision Transformer)**: Extracts image features for robust visual processing.
-- **ZoeDepth**: Performs single-view depth estimation for spatial understanding.
+AI2-THOR: Synthetic indoor scenes with comprehensive ground-truth metadata, including object types and positions, ideal for scene graph generation and navigation tasks.
+COCO: Real-world images with detailed object annotations, filtered for indoor categories (e.g., chair, table, bed, couch).
+TextVQA: Real-world images paired with text-based questions and answers to enhance visual question answering capabilities.
 
-### Object Detection
-- **Primary**: Leverages AI2-THOR metadata for synthetic images.
-- **Secondary**: Employs SAM2 segmentation for real-world images.
-- **Fallback**: Uses color-based segmentation if SAM2 fails.
 
-### Language Model
-- **T5 (Text-to-Text Transfer Transformer)**: Encodes questions and generates answers.
+Model Architecture
+Vision Backbone
 
-### Scene Graph
-- **Nodes**: Represent detected objects.
-- **Edges**: Encode spatial relationships (e.g., left_of, right_of, near).
+Vision Transformer (ViT): Extracts high-level image features for robust visual processing.
+ZoeDepth: Provides single-view depth estimation to enhance spatial understanding.
 
-### Cross-Modal Fusion
-- A cross-attention layer integrates vision and language features for answer generation.
+Object Detection Pipeline
 
----
+Primary Detection: Leverages AI2-THOR metadata for synthetic images.
+Secondary Detection: Utilizes SAM2 for segmentation in real-world images.
+Fallback Mechanism: Employs color-based segmentation when metadata or SAM2 detection is unavailable or fails.
 
-## 🏋️ Training Procedure
-### Preprocessing
-- Images are processed in batches (default: 100) to prevent memory issues.
-- Each batch is saved to disk as `processed_batch_*.pt` for later use.
-- Progress is tracked with `tqdm` bars.
+Language Model
 
-### Training
-- Utilizes **HuggingFace's Trainer** and **PyTorch** for efficient training.
-- Displays real-time batch and epoch progress with `tqdm`.
-- Supports resuming from preprocessed batches.
+T5 (Text-to-Text Transfer Transformer): Encodes input questions and generates precise answers.
 
-### Fallback Mechanisms
-- If object detection fails (e.g., SAM2 returns no objects), the model falls back to metadata or color-based detection.
+Scene Graph Representation
 
----
+Nodes: Represent detected objects in the scene.
+Edges: Capture spatial relationships between objects (e.g., left_of, right_of, near).
 
-## 🧑‍💻 Usage
-### Preprocessing and Training
-Run the main script to preprocess and train:
-```bash
+Cross-Modal Integration
+A cross-attention mechanism fuses vision and language features to generate contextually accurate answers.
+
+Training Workflow
+Preprocessing
+
+Images are processed in batches (default size: 100) to optimize memory usage.
+Processed batches are cached to disk as processed_batch_*.pt files for efficient reuse.
+Progress is monitored with tqdm progress bars for transparency.
+
+Training
+
+Built on PyTorch and HuggingFace's Trainer for streamlined and scalable training.
+Displays real-time progress for batches and epochs using tqdm.
+Supports resuming from preprocessed batches to avoid redundant computation.
+
+Fallback Mechanisms
+
+In cases of object detection failure (e.g., SAM2 returns no objects), the model automatically falls back to metadata-based or color-based detection to maintain robustness.
+
+
+Usage Instructions
+Preprocessing and Training
+To preprocess data and train the model, execute the main script:
 python indoor_navigation_vlm.py
-```
-- If interrupted, the script resumes training by loading `processed_batch_*.pt` files, avoiding redundant preprocessing.
 
-### Inference/Testing
-Use the provided inference script or integrate into your code:
-```python
+
+The script supports resuming training by loading cached processed_batch_*.pt files, ensuring no preprocessing is repeated unnecessarily.
+
+Inference
+Perform inference using the provided Python API or script:
 from indoor_navigation_vlm import NavigationVLM
 
 vlm = NavigationVLM("config.yaml")
-test_image = "data/your_test_image.png"
-question = "What objects do you see in this image?"
+test_image = "data/test_image.png"
+question = "What objects are present in this image?"
 answer = vlm.query(test_image, question)
 print("Answer:", answer)
-```
+
 Alternatively, run the inference script:
-```bash
 python test_vlm_inference.py
-```
 
----
 
-## 📁 File Structure
-- `indoor_navigation_vlm.py`: Main script for model, dataset, and training pipeline.
-- `test_vlm_inference.py`: Script for inference and testing.
-- `processed_batch_*.pt`: Auto-generated preprocessed data batches.
-- `config.yaml`: Configuration file for dataset paths and hyperparameters.
+File Structure
 
----
+indoor_navigation_vlm.py: Core script containing the model, dataset handling, and training pipeline.
+test_vlm_inference.py: Dedicated script for inference and testing.
+processed_batch_*.pt: Automatically generated files storing preprocessed data batches.
+config.yaml: Configuration file specifying dataset paths and hyperparameters.
 
-## 📝 Notes
-- **Memory Efficient**: Batch-wise preprocessing and disk caching enable training on large datasets with limited RAM/VRAM.
-- **Extensible**: Easily add new datasets or swap model components.
-- **Robust**: Handles missing metadata, failed detections, and supports resuming after interruptions.
 
----
+Technical Notes
 
-## 📜 Citation
-If you use this codebase, please cite the respective papers for:
-- ViT
-- T5
-- ZoeDepth
-- SAM2
-- AI2-THOR
+Memory Efficiency: Batch-wise preprocessing and disk caching enable training on large datasets with constrained RAM or VRAM.
+Extensibility: Modular design allows for easy integration of new datasets or model components.
+Robustness: Comprehensive fallback mechanisms ensure reliable performance even with incomplete metadata or detection failures.
+Resumability: Training can resume seamlessly from cached preprocessed data.
 
----
 
-## 🙏 Acknowledgements
-- **AI2-THOR**: Synthetic indoor scenes.
-- **COCO**: Real-world image annotations.
-- **TextVQA**: Text-based visual question answering.
-- **ViT**: Vision Transformer.
-- **T5**: Text-to-Text Transfer Transformer.
-- **ZoeDepth**: Depth estimation.
-- **SAM2**: Segmentation model.
+Citation
+If you use this codebase, please cite the following foundational works:
 
----
+Vision Transformer (ViT)
+Text-to-Text Transfer Transformer (T5)
+ZoeDepth
+Segment Anything Model 2 (SAM2)
+AI2-THOR
 
-## 💡 Example Questions
-- "What objects do you see in this image?"
-- "Is the table to the right of the chair?"
-- "How far is the sofa from the window?"
 
----
+Acknowledgements
+This project builds upon the following resources:
 
-Enjoy exploring indoor environments with the Indoor Navigation VLM! 🌟
+AI2-THOR: For synthetic indoor scene data.
+COCO: For real-world image annotations.
+TextVQA: For text-based visual question answering data.
+ViT: For vision feature extraction.
+T5: For language modeling.
+ZoeDepth: For depth estimation.
+SAM2: For advanced segmentation.
+
+
+Example Queries
+
+"What objects are present in this image?"
+"Is the table positioned to the right of the chair?"
+"What is the distance between the sofa and the window?"
+
+
+The Indoor Navigation VLM provides a powerful and flexible solution for indoor scene understanding and navigation tasks. For further details or support, please refer to the project documentation or contact the development team.
