@@ -24,22 +24,18 @@ class MetricsCallback(TrainerCallback):
         super().__init__()
         self.tokenizer = tokenizer
         self.metrics_file = os.path.join(output_dir, "training_metrics.csv")
-        self.metrics = {'epoch': [], 'step': [], 'loss': [], 'f1': [], 'accuracy': []}
+        self.metrics = {'epoch': [], 'step': [], 'loss': []}
         
     def on_log(self, args, state, control, logs=None, **kwargs):
         if logs and 'loss' in logs:
             self.metrics['epoch'].append(state.epoch)
             self.metrics['step'].append(state.global_step)
             self.metrics['loss'].append(logs['loss'])
-            self.metrics['f1'].append(0)
-            self.metrics['accuracy'].append(0)
             pd.DataFrame(self.metrics).to_csv(self.metrics_file, index=False)
     
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
         if metrics:
             if len(self.metrics['epoch']) > 0:
-                self.metrics['f1'][-1] = metrics.get('eval_f1', 0)
-                self.metrics['accuracy'][-1] = metrics.get('eval_accuracy', 0)
                 pd.DataFrame(self.metrics).to_csv(self.metrics_file, index=False)
 
 class CustomProgressCallback(TrainerCallback):
@@ -73,12 +69,11 @@ class CustomProgressCallback(TrainerCallback):
 
 def compute_metrics(eval_pred):
     predictions, labels = eval_pred
-    predictions = np.argmax(predictions, axis=2)
-    true_predictions = [[p for p, l in zip(prediction, label) if l != -100] for prediction, label in zip(predictions, labels)]
-    true_labels = [[l for l in label if l != -100] for label in labels]
-    accuracy = accuracy_score([" ".join(map(str, l)) for l in true_labels], [" ".join(map(str, p)) for p in true_predictions])
-    f1 = f1_score([item for sublist in true_labels for item in sublist], [item for sublist in true_predictions for item in sublist], average='macro')
-    return {'accuracy': accuracy, 'f1': f1}
+    pred_texts = [self.t5_tokenizer.decode(pred, skip_special_tokens=True).lower().strip() for pred in predictions]
+    label_texts = [self.t5_tokenizer.decode(label, skip_special_tokens=True).lower().strip() for label in labels]
+    exact_matches = [1 if pred == label else 0 for pred, label in zip(pred_texts, label_texts)]
+    accuracy = sum(exact_matches) / len(exact_matches) if exact_matches else 0.0
+    return {'accuracy': accuracy}
 
 class NavigationDataset(Dataset):
     def __init__(self, config):
