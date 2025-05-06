@@ -14,8 +14,9 @@ import json
 import random
 from tqdm import tqdm
 import pandas as pd
-from sklearn.metrics import f1_score, accuracy_score
+import matplotlib.pyplot as plt
 
+# Environment settings for stable CUDA operations and tokenizer parallelism
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
@@ -67,19 +68,13 @@ class CustomProgressCallback(TrainerCallback):
         self.progress_bar.close()
         self.epoch_progress.close()
 
-def compute_metrics(eval_pred):
-    predictions, labels = eval_pred
-    pred_texts = [self.t5_tokenizer.decode(pred, skip_special_tokens=True).lower().strip() for pred in predictions]
-    label_texts = [self.t5_tokenizer.decode(label, skip_special_tokens=True).lower().strip() for label in labels]
-    exact_matches = [1 if pred == label else 0 for pred, label in zip(pred_texts, label_texts)]
-    accuracy = sum(exact_matches) / len(exact_matches) if exact_matches else 0.0
-    return {'accuracy': accuracy}
 
 class NavigationDataset(Dataset):
     def __init__(self, config):
         self.config = config
         self.data = []
         os.makedirs("data", exist_ok=True)
+        # Load datasets from multiple sources
         self.load_ai2thor()
         self.load_textvqa()
         self.load_coco()
@@ -97,6 +92,7 @@ class NavigationDataset(Dataset):
             image_path = f"data/ai2thor_{scene_id}_{i}.png"
             metadata_path = f"data/ai2thor_{scene_id}_{i}_metadata.json"
             cv2.imwrite(image_path, cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+            # Add screen position if missing for object localization
             for obj in visible_objects:
                 if 'screenPosition' not in obj:
                     obj['screenPosition'] = {'x': int(256 + obj['position']['x'] * 100), 'y': int(256 + obj['position']['z'] * 100)}
@@ -111,6 +107,7 @@ class NavigationDataset(Dataset):
             objects = json.load(f)
         if len(objects) < 2:
             return vqa_pairs
+        # Limit the number of object pairs to avoid excessive combinations
         max_pairs = min(10, len(objects) * (len(objects) - 1) // 2)
         selected_pairs = random.sample([(i, j) for i in range(len(objects)) for j in range(i+1, len(objects))], max_pairs)
         for i, j in selected_pairs:
@@ -148,6 +145,7 @@ class NavigationDataset(Dataset):
     def load_coco(self):
         with open(self.config['coco_annotations'], 'r', encoding='utf-8') as f:
             coco_data = json.load(f)
+        # Filter for indoor scenes based on object categories
         indoor_categories = ['chair', 'table', 'bed', 'couch', 'toilet', 'tv', 'microwave', 'oven', 'refrigerator']
         indoor_image_ids = set(ann['image_id'] for ann in coco_data['annotations'] 
                                if any(cat['name'] in indoor_categories for cat in coco_data['categories'] if cat['id'] == ann['category_id']))
@@ -201,6 +199,7 @@ class NavigationVLM:
         self.config = self.load_config(config_path)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._image_cache = {}
+        # Initialize models for depth estimation, segmentation, and vision-language tasks
         self.zoe_model = self.load_zoe_depth()
         self.sam_model = self.load_sam_model()
         self.vit_model = ViTModel.from_pretrained("google/vit-base-patch16-224").to(self.device)
@@ -223,6 +222,7 @@ class NavigationVLM:
         return model
 
     def load_sam_model(self):
+        # Configure SAM2 for automatic mask generation
         sam = build_sam2(
             config_file="sam2_hiera_l.yaml",
             checkpoint=self.config['sam_checkpoint'],
@@ -239,6 +239,7 @@ class NavigationVLM:
         objects = []
         hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
         height, width = img_np.shape[:2]
+        # Define color ranges for common indoor objects
         color_ranges = [
             ("table", np.array([10, 50, 50]), np.array([30, 255, 200])),
             ("floor", np.array([0, 0, 100]), np.array([180, 30, 255])),
@@ -265,6 +266,7 @@ class NavigationVLM:
                     centroid_depth = depth_map[min(int(centroid[1]), depth_map.shape[0]-1), min(int(centroid[0]), depth_map.shape[1]-1)] if depth_map is not None else y / height
                     objects.append({'id': obj_id, 'bbox': [x, y, w, h], 'centroid': centroid, 'depth': float(centroid_depth), 'label': name, 'area': cv2.contourArea(contour)})
                     obj_id += 1
+        # Fallback for when no objects are detected
         if not objects:
             regions = [(0, 0, width//2, height//2, "wall"), (width//2, 0, width//2, height//2, "window"), 
                        (0, height//2, width//2, height//2, "floor"), (width//2, height//2, width//2, height//2, "furniture")]
@@ -282,6 +284,7 @@ class NavigationVLM:
         img = Image.open(image_path).convert('RGB')
         img_np = np.array(img)
         img_tensor = torch.from_numpy(img_np).permute(2, 0, 1).unsqueeze(0).float().to(self.device) / 255.0
+        # Generate depth map using ZoeDepth
         with torch.no_grad():
             depth = self.zoe_model.infer(img_tensor).squeeze().cpu().numpy()
         metadata_path = image_path.replace('.png', '_metadata.json')
@@ -295,6 +298,7 @@ class NavigationVLM:
                 if 0 <= x <= img_np.shape[1] and 0 <= y <= img_np.shape[0]:
                     objects.append({'id': i, 'bbox': [x-25, y-25, 50, 50], 'centroid': [x, y], 'depth': obj.get('position', {}).get('z', 0), 'label': obj.get('objectType', f'obj_{i}')})
         else:
+            # Use SAM2 for object segmentation if metadata is unavailable
             masks = self.sam_model.generate(img_np)
             if masks:
                 objects = [{'id': i, 'bbox': mask['bbox'], 'centroid': [mask['bbox'][0] + mask['bbox'][2]/2, mask['bbox'][1] + mask['bbox'][3]/2], 
@@ -312,6 +316,7 @@ class NavigationVLM:
         objects = image_data['objects']
         nodes = [{'id': obj['id'], 'label': obj['label'], 'position': obj['centroid'], 'depth': obj['depth'], 'size': [obj['bbox'][2], obj['bbox'][3]]} for obj in objects]
         edges = []
+        # Create edges based on spatial relationships
         for i, obj1 in enumerate(objects):
             for j, obj2 in enumerate(objects[i+1:]):
                 dx = obj1['centroid'][0] - obj2['centroid'][0]
@@ -356,6 +361,7 @@ class NavigationVLM:
                 if image_data is None:
                     continue
                 vit_features = image_data['vit_features'].squeeze(0).cpu()
+                # Tokenize question and answer for T5 model
                 inputs = self.t5_tokenizer(f"Question: {example['question']}\nScene info: {example['source']}\nAnswer:", 
                                          return_tensors="pt", padding="max_length", max_length=128, truncation=True)
                 labels = self.t5_tokenizer(example['answer'], return_tensors="pt", padding="max_length", max_length=64, truncation=True)
@@ -379,6 +385,15 @@ class NavigationVLM:
         for batch_file in tqdm(batch_files, desc="Loading batches"):
             all_data.extend(torch.load(batch_file))
         return all_data
+    
+    # Computes accuracy for model predictions
+    def compute_metrics(self, eval_pred):
+        predictions, labels = eval_pred
+        pred_texts = [self.t5_tokenizer.decode(pred, skip_special_tokens=True).lower().strip() for pred in predictions]
+        label_texts = [self.t5_tokenizer.decode(label, skip_special_tokens=True).lower().strip() for label in labels]
+        exact_matches = [1 if pred == label else 0 for pred, label in zip(pred_texts, label_texts)]
+        accuracy = sum(exact_matches) / len(exact_matches) if exact_matches else 0.0
+        return {'accuracy': accuracy}
 
     def train(self, output_dir):
         os.makedirs(output_dir, exist_ok=True)
@@ -396,6 +411,7 @@ class NavigationVLM:
             def __getitem__(self, idx):
                 return self.data[idx]
         
+        # Configure training parameters
         training_args = TrainingArguments(
             output_dir=output_dir,
             num_train_epochs=self.config['epochs'],
@@ -418,6 +434,7 @@ class NavigationVLM:
             dataloader_drop_last=True,
         )
         
+        # Define model with cross-attention between vision and text features
         class CrossAttentionVLM(torch.nn.Module):
             def __init__(self, vit_model, t5_model):
                 super().__init__()
@@ -450,16 +467,18 @@ class NavigationVLM:
             args=training_args,
             train_dataset=PreprocessedDataset(train_data),
             eval_dataset=PreprocessedDataset(eval_data),
-            compute_metrics=compute_metrics,
+            compute_metrics=self.compute_metrics,
             callbacks=[CustomProgressCallback(), MetricsCallback(self.t5_tokenizer, output_dir)]
         )
         trainer.state.trainer = trainer
         trainer.train()
+        # Save models and tokenizer
         self.t5_model.save_pretrained(os.path.join(output_dir, "t5_model"), safe_serialization=False)
         self.t5_tokenizer.save_pretrained(os.path.join(output_dir, "t5_tokenizer"))
         torch.save(self.vit_model.state_dict(), os.path.join(output_dir, "vit_model.pt"))
+        # Plot training metrics
         metrics_df = pd.read_csv(os.path.join(output_dir, "training_metrics.csv"))
-        import matplotlib.pyplot as plt
+        
         plt.figure(figsize=(12, 8))
         plt.subplot(2, 1, 1)
         plt.plot(metrics_df['step'], metrics_df['loss'], label='Training Loss')
@@ -484,6 +503,7 @@ class NavigationVLM:
         scene_graph = self.generate_scene_graph(image_data)
         self.visualize_scene_graph(image_path, scene_graph)
         
+        # Customize scene info based on question type
         if "objects do you see" in question.lower():
             scene_info = f"Objects: {', '.join(node['label'] for node in scene_graph['nodes'])}"
         elif "spatial relationship" in question.lower():
@@ -503,12 +523,14 @@ class NavigationVLM:
             )
         answer = self.t5_tokenizer.decode(outputs[0], skip_special_tokens=True).split("Answer:")[-1].strip()
         
+        # Handle invalid or unexpected outputs
         if "not_duplicate" in answer.lower() or "not_entailment" in answer.lower() or "nodes" in answer.lower():
             answer = "Unknown response"
         
         return answer
 
 def main():
+    # Set random seeds for reproducibility
     random.seed(42)
     np.random.seed(42)
     torch.manual_seed(42)
