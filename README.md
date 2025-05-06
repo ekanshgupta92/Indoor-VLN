@@ -133,5 +133,7 @@ This project builds upon the following resources:
 - "What is the distance between the sofa and the window?"
 
 ---
+## Contribution
+All three of us contributed equally to the project. We collaboratively designed the model architecture, handled dataset preprocessing, and implemented the vision-language pipeline end-to-end. We participated together in all study sessions, divided the coding and documentation tasks evenly, and made all key decisions jointly. Additionally, we co-authored the final report and jointly created the video presentation, ensuring that every part of the project reflected our shared understanding and effort.
 
-The Indoor Navigation VLM provides a powerful and flexible solution for indoor scene understanding and navigation tasks. For further details or support, please refer to the project documentation or contact the development team.
+---
